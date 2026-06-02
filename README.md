@@ -1,56 +1,115 @@
-# Welcome to your Expo app 👋
+# CTK Alumni — Android App 🎓
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A warm, nostalgic mobile companion for the **Christ The King Alumni Association**, built with
+Expo (React Native) + Expo Router. It talks to the existing Next.js backend
+(`https://alum-app-tau.vercel.app`) — no separate API is needed.
 
-## Get started
+The design leans into reminiscence: aged-paper creams, heritage navy and antique gold, a
+serif "yearbook" type system (Playfair Display), and handwritten captions (Caveat).
 
-1. Install dependencies
+## Features
 
-   ```bash
-   npm install
-   ```
+- **Home** — regal hero with live site content & stats, quick links, upcoming events,
+  Wall of Fame carousel, and a "Photo Memories" archive strip.
+- **Events** — upcoming / past ("Memories") / all, with rich event detail + register link.
+- **Memories (Gallery)** — albums shown as polaroids, full photo grid, and a full-screen viewer.
+- **Alumni Directory** — debounced search + detailed alumni profiles (skills, education, work, socials).
+- **More** — account (JWT sign-in via Secure Store), Wall of Fame, Careers, Leadership,
+  Principals, Give Back, and Membership plans.
+- **Auth** — login (email *or* mobile) and registration against the backend's JWT endpoints.
+- **Notifications** (Zomato/Swiggy-style) — friendly first-launch permission primer, per-content
+  Android channels (Events, Wall of Fame, Community, General), an in-app inbox with an unread
+  badge on every header bell, deep-linking on tap (cold-start aware), event "Remind me" alerts,
+  and a settings screen with live test/preview notifications.
 
-2. Start the app
+## Tech
 
-   ```bash
-   npx expo start
-   ```
+| Concern        | Choice                                              |
+| -------------- | --------------------------------------------------- |
+| Framework      | Expo SDK 56, React Native 0.85, React 19            |
+| Navigation     | Expo Router (file-based, typed routes)              |
+| Data           | TanStack Query (`@tanstack/react-query`)            |
+| Auth storage   | `expo-secure-store` (JWT)                           |
+| Images         | `expo-image`                                        |
+| Fonts          | Playfair Display, Inter, Caveat (Google Fonts)      |
+| Notifications  | `expo-notifications` (local + Expo push), `expo-device` |
+| Local storage  | `@react-native-async-storage/async-storage` (inbox)  |
 
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Run it
 
 ```bash
-npm run reset-project
+npm install
+npx expo start            # then press 'a' for Android, or scan the QR in Expo Go
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+> The app loads live data from the production backend, so a network connection is required.
+> No `.env` is needed — the API base lives in `src/lib/api.ts` (`API_BASE`).
 
-### Other setup steps
+## Build a downloadable APK (EAS)
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+The repo includes `eas.json` with a `preview` profile that produces an installable `.apk`.
 
-## Learn more
+```bash
+npm install -g eas-cli
+eas login                 # your Expo account
+eas build -p android --profile preview
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+EAS builds in the cloud and returns a download link for the `.apk`. For a Play Store
+bundle (`.aab`) use the `production` profile instead.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+### Local APK (optional)
 
-## Join the community
+With Android Studio + JDK installed you can build locally:
 
-Join our community of developers creating universal apps.
+```bash
+npx expo prebuild -p android
+cd android && ./gradlew assembleRelease
+# APK lands in android/app/build/outputs/apk/release/
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Project layout
+
+```
+src/
+  app/                 # Expo Router routes
+    (tabs)/            # Home, Events, Memories, Alumni, More
+    event/[id].tsx     # detail screens
+    news/[id].tsx  news.tsx
+    album/[id].tsx
+    alumni/[id].tsx
+    jobs / leadership / principals / donate / membership
+    login.tsx  register.tsx
+  components/          # Text, Crest, cards, PageHeader, Avatar, ui primitives
+  lib/                 # api client + types, auth context, query client, helpers
+  theme/               # colors, fonts, spacing, gradients, shadows
+```
+
+## Notes on the backend
+
+Read endpoints (events, news, gallery, albums, alumni, jobs, leadership, principals,
+membership plans, site content) are public and consumed directly. The personalised
+dashboard endpoints are protected by the web app's NextAuth session cookie, so the mobile
+app uses the JWT `/api/auth/login` endpoint for sign-in state and deep-links to the website
+for flows that require that session (event registration, donations, membership checkout).
+
+## Notifications
+
+Everything that drives the in-app experience works **out of the box** with no backend change:
+local reminders ("Remind me" on events), the permission primer, channels, the inbox, badge
+counts and deep-linking all run on-device. In **Expo Go** remote push is unavailable, so token
+registration no-ops gracefully — local notifications still demo the full UX. Building a
+dev/standalone APK (with an EAS `projectId`) enables real Expo push tokens.
+
+**Remote ("server-sent") push** needs a small backend addition, because the existing web-push
+(VAPID) routes only reach browsers. The app posts its Expo token to `POST /api/push/register-device`.
+Drop-in reference implementations for the alum-app backend live in [`backend-push/`](./backend-push)
+(with their own README):
+
+- `prisma/schema.additions.prisma` → a `DeviceToken` model (token `@unique @db.VarChar(255)`,
+  tenantId, platform, userId), then `npx prisma migrate dev`.
+- `app/api/push/register-device/route.ts` → `POST`/`DELETE` to upsert/remove a device token.
+- `app/api/push/send-native/route.ts` → ADMIN-only fan-out via the Expo Push API
+  (`https://exp.host/--/api/v2/push/send`, batched 100/req, prunes `DeviceNotRegistered`).
+
+Send payload mirrors the app's deep-link map: `{ title, body, type, id, channelId, url }`.

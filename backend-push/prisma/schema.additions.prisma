@@ -1,0 +1,19 @@
+// ── Native Push (Expo) device tokens ──────────────────────────────────────────
+// Paste this model into alum-app's prisma/schema.prisma (next to PushSubscription),
+// then run: npx prisma migrate dev --name device_tokens
+//
+// Native apps register an Expo push token here. Unlike the web PushSubscription
+// (VAPID endpoint + p256dh/auth keys), Expo delivery needs only the single token
+// string, so it gets its own table.
+model DeviceToken {
+  id        String   @id @default(uuid())
+  tenantId  String
+  token     String   @unique @db.VarChar(255)
+  platform  String?
+  userId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([userId])
+}
