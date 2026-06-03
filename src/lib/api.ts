@@ -306,6 +306,22 @@ export type AlumniUser = {
   memberships?: Membership[];
 };
 
+/** Geographic distribution rows from /api/analytics/map. */
+export type CountryCount = { country: string; count: number };
+export type StateCount = { state: string; count: number };
+/** Trimmed alumni shape returned by /api/analytics/map?country&state. */
+export type MapAlumnus = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  batchYear: number | null;
+  profession: string | null;
+  company: string | null;
+  imageUrl: string | null;
+  isVerified: boolean;
+  currentAddress: { city: string | null } | null;
+};
+
 export type JobPost = {
   id: string;
   title: string;
@@ -608,6 +624,13 @@ export const api = {
   // Authenticated so signed-in members see fields the owner's privacy
   // settings permit (the server masks contact details for anonymous viewers).
   alumnus: (id: string) => request<AlumniUser>(`/api/alumni/${id}`, { auth: true }),
+
+  // Geographic alumni distribution (public endpoint — powers the web map and
+  // the mobile "Alumni Around the World" drill-down).
+  mapCountries: () => get<CountryCount[]>("/api/analytics/map"),
+  mapStates: (country: string) => get<StateCount[]>(`/api/analytics/map${qs({ country })}`),
+  mapAlumni: (country: string, state: string) =>
+    get<MapAlumnus[]>(`/api/analytics/map${qs({ country, state })}`),
 
   jobs: (p: { search?: string; page?: number; limit?: number } = {}) =>
     get<ListResponse<JobPost>>(`/api/jobs${qs(p)}`),

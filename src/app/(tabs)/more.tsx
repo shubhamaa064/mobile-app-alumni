@@ -1,7 +1,7 @@
 import React from "react";
 import { View, ScrollView, StyleSheet, Pressable, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import { api } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
@@ -27,6 +27,7 @@ export default function MoreScreen() {
       items: [
         { icon: "ribbon", label: "Wall of Fame", sub: "Celebrated alumni", onPress: () => router.push("/news") },
         { icon: "star", label: "Featured Alumni", sub: "Verified members", onPress: () => router.push("/featured-alumni") },
+        { icon: "earth", label: "Alumni Around the World", sub: "Explore the family by location", onPress: () => router.push("/alumni-map" as Href) },
         { icon: "briefcase", label: "Careers", sub: "Jobs from the network", onPress: () => router.push("/jobs") },
         { icon: "school-outline", label: "Scholarships", sub: "Grants & support", onPress: () => router.push("/scholarships") },
         { icon: "clipboard", label: "Surveys", sub: "Share your voice", onPress: () => router.push("/surveys") },

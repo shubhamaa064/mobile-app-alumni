@@ -53,6 +53,7 @@ export default function RootLayout() {
                 <StatusBar style="light" />
                 <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.paper } }}>
                   <Stack.Screen name="(tabs)" />
+                  <Stack.Screen name="alumni-map" />
                   <Stack.Screen name="inbox" />
                   <Stack.Screen name="login" options={{ presentation: "modal" }} />
                   <Stack.Screen name="register" options={{ presentation: "modal" }} />
