@@ -1,12 +1,12 @@
 import React, { useState } from "react";
-import { View, ScrollView, StyleSheet, Pressable, Linking } from "react-native";
+import { View, ScrollView, StyleSheet, Pressable, Linking, Share } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
 import { goBack } from "@/lib/nav";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import { api, type Address, type AlumniUser } from "@/lib/api";
+import { api, API_BASE, type Address, type AlumniUser } from "@/lib/api";
 import { colors, fonts, gradients, radius, spacing, shadow } from "@/theme";
 import { Txt } from "@/components/Text";
 import { Avatar } from "@/components/Avatar";
@@ -33,6 +33,22 @@ export default function AlumnusDetail() {
   const { data, isLoading, isError } = useQuery({ queryKey: ["alumnus", id], queryFn: () => api.alumnus(id) });
   const [tab, setTab] = useState<Tab>("overview");
   const p = data?.alumniProfile;
+
+  const shareProfile = async () => {
+    if (!p) return;
+    const name = `${p.firstName} ${p.lastName}`.trim();
+    const url = `${API_BASE}/alumni/${id}`;
+    const where = p.profession ? `${p.profession}${p.company ? ` at ${p.company}` : ""}` : "a fellow CTK alum";
+    try {
+      await Share.share({
+        message: `Connect with ${name}${p.batchYear ? ` (Batch of ${p.batchYear})` : ""} — ${where} on the CTK Alumni app.\n${url}`,
+        url,
+        title: name,
+      });
+    } catch {
+      // user dismissed the share sheet — nothing to do
+    }
+  };
 
   if (isLoading) return <View style={styles.container}><Loader label="Loading profile…" /></View>;
 
@@ -73,9 +89,14 @@ export default function AlumnusDetail() {
       <ScrollView contentContainerStyle={{ paddingBottom: spacing.xxxl }} showsVerticalScrollIndicator={false} stickyHeaderIndices={[1]}>
         {/* ── Hero ── */}
         <LinearGradient colors={gradients.hero} style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-          <Pressable onPress={goBack} hitSlop={10} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={22} color={colors.white} />
-          </Pressable>
+          <View style={styles.heroTop}>
+            <Pressable onPress={goBack} hitSlop={10} style={styles.backBtn}>
+              <Ionicons name="chevron-back" size={22} color={colors.white} />
+            </Pressable>
+            <Pressable onPress={shareProfile} hitSlop={10} style={styles.backBtn}>
+              <Ionicons name="share-outline" size={20} color={colors.white} />
+            </Pressable>
+          </View>
           <View style={{ alignItems: "center", marginTop: spacing.sm }}>
             <Avatar uri={p.imageUrl} initials={initials(p.firstName, p.lastName)} size={104} />
             <View style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.md }}>
@@ -369,6 +390,7 @@ function EmptyBlock({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.paper },
   header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, borderBottomLeftRadius: radius.xl, borderBottomRightRadius: radius.xl },
+  heroTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center" },
   tabBar: { backgroundColor: colors.paper, borderBottomWidth: 1, borderBottomColor: colors.line, paddingVertical: spacing.sm },
   tab: { paddingHorizontal: spacing.md, paddingVertical: 8, marginRight: spacing.xs, borderRadius: radius.pill },
