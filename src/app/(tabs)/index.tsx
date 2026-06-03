@@ -288,7 +288,7 @@ export default function HomeScreen() {
         <Logo height={84} />
         <Ornament style={{ marginVertical: spacing.md }} />
         <Txt style={{ fontFamily: fonts.displayItalic, fontSize: 18, color: colors.navy, textAlign: "center" }}>
-          “Once a King, always a King.”
+          “Once a Christerians, always a Christerians.”
         </Txt>
         <Txt variant="caption" center style={{ marginTop: 6 }}>
           {info.data?.name || "Christ The King Alumni Association"} · Tundla

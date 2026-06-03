@@ -52,7 +52,7 @@ export default function MyProfileScreen() {
   const onSignOut = () =>
     Alert.alert("Sign out", "Are you sure you want to sign out?", [
       { text: "Cancel", style: "cancel" },
-      { text: "Sign out", style: "destructive", onPress: () => { signOut(); goBack(); } },
+      { text: "Sign out", style: "destructive", onPress: () => signOut() },
     ]);
 
   return (

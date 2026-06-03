@@ -92,7 +92,7 @@ export default function AboutScreen() {
         <View style={{ alignItems: "center", marginTop: spacing.xxl }}>
           <Ornament style={{ marginBottom: spacing.md }} />
           <Txt style={{ fontFamily: fonts.displayItalic, fontSize: 17, color: colors.navy, textAlign: "center" }}>
-            “Once a King, always a King.”
+            “Once a Christerians, always a Christerians.”
           </Txt>
           <Txt variant="caption" center style={{ marginTop: 6 }}>
             Christ The King Alumni Association · Tundla

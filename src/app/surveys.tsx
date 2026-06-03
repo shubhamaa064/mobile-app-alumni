@@ -17,7 +17,7 @@ export default function SurveysScreen() {
 
   return (
     <View style={styles.container}>
-      <PageHeader eyebrow="Your voice matters" title="Surveys" subtitle="Help shape our community" right={<Bell />} />
+      <PageHeader back eyebrow="Your voice matters" title="Surveys" subtitle="Help shape our community" right={<Bell />} />
       {isLoading ? (
         <Loader label="Loading surveys…" />
       ) : (

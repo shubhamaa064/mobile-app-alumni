@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import {
   login as apiLogin,
@@ -116,6 +117,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await mobileLogout();
     await clearStoredUser();
     setUser(null);
+    // On mobile, sign-out should land the user back on the home/landing screen
+    // (and drop any authenticated screens from the stack), rather than leaving
+    // them staring at now-empty member-only content.
+    router.replace("/");
   }, []);
 
   return (

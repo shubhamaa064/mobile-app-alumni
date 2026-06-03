@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { View, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from "react-native";
+import { View, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -28,6 +28,7 @@ export default function LoginScreen() {
   const [code, setCode] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // OTP delivery context shown on the verify screen.
   const [channel, setChannel] = useState<"sms" | "email">("sms");
@@ -51,8 +52,9 @@ export default function LoginScreen() {
   // ── Step 1: request a code ─────────────────────────────────────────────────
   const requestCode = async (isResend = false) => {
     const id = identifier.trim();
+    setError(null);
     if (!id) {
-      Alert.alert("Almost there", "Enter your registered mobile number or email.");
+      setError("Enter your registered mobile number or email.");
       return;
     }
     setLoading(true);
@@ -68,7 +70,7 @@ export default function LoginScreen() {
         // Don't reveal anything; just keep the verify screen open.
       }
     } catch (e) {
-      Alert.alert("Couldn't send code", e instanceof Error ? e.message : "Please try again.");
+      setError(e instanceof Error ? e.message : "Couldn't send the code. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -77,8 +79,9 @@ export default function LoginScreen() {
   // ── Step 2: verify the code ────────────────────────────────────────────────
   const verifyCode = async () => {
     const clean = code.replace(/\D/g, "");
+    setError(null);
     if (clean.length < 4) {
-      Alert.alert("Enter the code", "Type the code we sent you.");
+      setError("Type the code we sent you.");
       return;
     }
     setLoading(true);
@@ -87,7 +90,7 @@ export default function LoginScreen() {
       await applySession(session);
       goBack();
     } catch (e) {
-      Alert.alert("Verification failed", e instanceof Error ? e.message : "Please try again.");
+      setError(e instanceof Error ? e.message : "That code didn't work. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -95,8 +98,9 @@ export default function LoginScreen() {
 
   // ── Password fallback ──────────────────────────────────────────────────────
   const submitPassword = async () => {
+    setError(null);
     if (!identifier || !password) {
-      Alert.alert("Almost there", "Please enter your email and password.");
+      setError("Please enter your email and password.");
       return;
     }
     setLoading(true);
@@ -104,7 +108,7 @@ export default function LoginScreen() {
       await signIn(identifier.trim(), password);
       goBack();
     } catch (e) {
-      Alert.alert("Sign in failed", e instanceof Error ? e.message : "Please try again.");
+      setError(e instanceof Error ? e.message : "Invalid email or password.");
     } finally {
       setLoading(false);
     }
@@ -116,7 +120,7 @@ export default function LoginScreen() {
     <LinearGradient colors={gradients.hero} style={styles.container}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <Pressable
-          onPress={() => (isVerify ? (setStep("enter"), setCode("")) : goBack())}
+          onPress={() => (isVerify ? (setStep("enter"), setCode(""), setError(null)) : goBack())}
           style={[styles.close, { top: insets.top + 8 }]}
           hitSlop={10}
         >
@@ -138,6 +142,13 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.form}>
+            {error ? (
+              <View style={styles.errorBox}>
+                <Ionicons name="alert-circle" size={16} color={colors.white} />
+                <Txt style={styles.errorTxt}>{error}</Txt>
+              </View>
+            ) : null}
+
             {/* ── OTP: enter identifier ── */}
             {mode === "otp" && step === "enter" && (
               <>
@@ -145,7 +156,7 @@ export default function LoginScreen() {
                   icon="person-outline"
                   placeholder="Mobile number or email"
                   value={identifier}
-                  onChangeText={setIdentifier}
+                  onChangeText={(t) => { setIdentifier(t); if (error) setError(null); }}
                   autoCapitalize="none"
                   keyboardType="email-address"
                   returnKeyType="send"
@@ -158,7 +169,7 @@ export default function LoginScreen() {
                     <Txt style={styles.submitTxt}>Send code</Txt>
                   )}
                 </Pressable>
-                <Pressable onPress={() => setMode("password")} style={styles.linkRow} hitSlop={8}>
+                <Pressable onPress={() => { setMode("password"); setError(null); }} style={styles.linkRow} hitSlop={8}>
                   <Ionicons name="lock-closed-outline" size={14} color="rgba(255,255,255,0.7)" />
                   <Txt style={styles.linkTxt}>  Sign in with password instead</Txt>
                 </Pressable>
@@ -172,7 +183,7 @@ export default function LoginScreen() {
                   icon="keypad-outline"
                   placeholder="6-digit code"
                   value={code}
-                  onChangeText={(t) => setCode(t.replace(/\D/g, "").slice(0, 8))}
+                  onChangeText={(t) => { setCode(t.replace(/\D/g, "").slice(0, 8)); if (error) setError(null); }}
                   keyboardType="number-pad"
                   autoFocus
                   maxLength={8}
@@ -207,7 +218,7 @@ export default function LoginScreen() {
                   icon="person-outline"
                   placeholder="Email address"
                   value={identifier}
-                  onChangeText={setIdentifier}
+                  onChangeText={(t) => { setIdentifier(t); if (error) setError(null); }}
                   autoCapitalize="none"
                   keyboardType="email-address"
                 />
@@ -215,7 +226,7 @@ export default function LoginScreen() {
                   icon="lock-closed-outline"
                   placeholder="Password"
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(t) => { setPassword(t); if (error) setError(null); }}
                   secureTextEntry={!show}
                   right={
                     <Pressable onPress={() => setShow((s) => !s)} hitSlop={8}>
@@ -233,7 +244,7 @@ export default function LoginScreen() {
                     <Txt style={styles.submitTxt}>Sign In</Txt>
                   )}
                 </Pressable>
-                <Pressable onPress={() => setMode("otp")} style={styles.linkRow} hitSlop={8}>
+                <Pressable onPress={() => { setMode("otp"); setError(null); }} style={styles.linkRow} hitSlop={8}>
                   <Ionicons name="chatbox-ellipses-outline" size={14} color="rgba(255,255,255,0.7)" />
                   <Txt style={styles.linkTxt}>  Sign in with a one-time code</Txt>
                 </Pressable>
@@ -296,6 +307,17 @@ const styles = StyleSheet.create({
   hand: { fontFamily: fonts.handBold, fontSize: 20, color: colors.goldSoft, marginTop: 10 },
   form: { marginTop: spacing.xxl },
   submit: { backgroundColor: colors.goldSoft, paddingVertical: 16, borderRadius: radius.md, alignItems: "center", marginTop: spacing.sm, ...shadow.lift },
+  errorBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(178,34,52,0.92)",
+    borderRadius: radius.md,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    marginBottom: spacing.md,
+  },
+  errorTxt: { flex: 1, fontFamily: fonts.bodySemi, color: colors.white, fontSize: 13 },
   submitTxt: { fontFamily: fonts.bodyBold, color: colors.navyDeep, fontSize: 16 },
   linkRow: { flexDirection: "row", justifyContent: "center", alignItems: "center", marginTop: spacing.lg },
   linkTxt: { fontFamily: fonts.bodySemi, color: "rgba(255,255,255,0.8)", fontSize: 13 },
