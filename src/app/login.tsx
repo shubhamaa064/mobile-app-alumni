@@ -6,7 +6,7 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/lib/auth";
 import { goBack } from "@/lib/nav";
-import { otpRequest, otpVerify } from "@/lib/api";
+import { otpRequest, otpVerify, oauthLogin, googleNativeLogin, type OAuthProvider } from "@/lib/api";
 import { colors, fonts, gradients, radius, spacing, shadow } from "@/theme";
 import { Txt } from "@/components/Text";
 import { Logo } from "@/components/Logo";
@@ -109,6 +109,25 @@ export default function LoginScreen() {
       goBack();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Invalid email or password.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Social sign-in (Google / LinkedIn) ─────────────────────────────────────
+  const oauth = async (provider: OAuthProvider) => {
+    setError(null);
+    setLoading(true);
+    try {
+      // Google → native account chooser (no browser); LinkedIn → in-app browser
+      // OAuth (LinkedIn offers no native mobile sign-in).
+      const session =
+        provider === "google" ? await googleNativeLogin() : await oauthLogin(provider);
+      if (!session) return; // user cancelled
+      await applySession(session);
+      goBack();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't sign in. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -250,6 +269,27 @@ export default function LoginScreen() {
                 </Pressable>
               </>
             )}
+
+            {/* ── Social sign-in (hidden on the code-verify step) ── */}
+            {!isVerify && (
+              <>
+                <View style={styles.divider}>
+                  <View style={styles.dividerLine} />
+                  <Txt style={styles.dividerTxt}>or continue with</Txt>
+                  <View style={styles.dividerLine} />
+                </View>
+                <View style={styles.social}>
+                  <Pressable style={styles.socialBtn} onPress={() => oauth("google")} disabled={loading}>
+                    <Ionicons name="logo-google" size={18} color={colors.navyDeep} />
+                    <Txt style={styles.socialTxt}>Google</Txt>
+                  </Pressable>
+                  <Pressable style={styles.socialBtn} onPress={() => oauth("linkedin")} disabled={loading}>
+                    <Ionicons name="logo-linkedin" size={18} color={colors.navyDeep} />
+                    <Txt style={styles.socialTxt}>LinkedIn</Txt>
+                  </Pressable>
+                </View>
+              </>
+            )}
           </View>
 
           <View style={styles.footer}>
@@ -321,5 +361,21 @@ const styles = StyleSheet.create({
   submitTxt: { fontFamily: fonts.bodyBold, color: colors.navyDeep, fontSize: 16 },
   linkRow: { flexDirection: "row", justifyContent: "center", alignItems: "center", marginTop: spacing.lg },
   linkTxt: { fontFamily: fonts.bodySemi, color: "rgba(255,255,255,0.8)", fontSize: 13 },
+  divider: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: spacing.xl, marginBottom: spacing.md },
+  dividerLine: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,0.18)" },
+  dividerTxt: { fontFamily: fonts.bodySemi, color: "rgba(255,255,255,0.55)", fontSize: 12 },
+  social: { flexDirection: "row", gap: spacing.md },
+  socialBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: colors.white,
+    paddingVertical: 13,
+    borderRadius: radius.md,
+    ...shadow.soft,
+  },
+  socialTxt: { fontFamily: fonts.bodyBold, color: colors.navyDeep, fontSize: 14.5 },
   footer: { flexDirection: "row", justifyContent: "center", alignItems: "center", marginTop: spacing.xl },
 });

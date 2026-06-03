@@ -44,7 +44,8 @@
           "color": "#C8A24B",
           "defaultChannel": "general"
         }
-      ]
+      ],
+      "@react-native-google-signin/google-signin"
     ],
     "notification": {
       "icon": "./assets/images/notification-icon.png",
@@ -54,6 +55,9 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "googleWebClientId": "REPLACE_WITH_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com"
     }
   }
 }

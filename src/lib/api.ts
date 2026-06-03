@@ -7,6 +7,14 @@
 import { Platform } from "react-native";
 import * as Device from "expo-device";
 import * as SecureStore from "expo-secure-store";
+import * as WebBrowser from "expo-web-browser";
+import * as Linking from "expo-linking";
+import Constants from "expo-constants";
+import {
+  GoogleSignin,
+  statusCodes,
+  isErrorWithCode,
+} from "@react-native-google-signin/google-signin";
 
 export const API_BASE = "https://alum-app-tau.vercel.app";
 
@@ -1013,6 +1021,139 @@ export async function mobileMe(): Promise<MeResult> {
     const reason = status === 401 || status === 403 ? "unauthorized" : "network";
     return { ok: false, reason };
   }
+}
+
+// ── Social sign-in (Google / LinkedIn) ───────────────────────────────────────
+
+export type OAuthProvider = "google" | "linkedin";
+
+// ── Native Google Sign-In (account chooser, no browser) ───────────────────────
+
+const GOOGLE_WEB_CLIENT_ID: string | undefined =
+  (Constants.expoConfig?.extra as { googleWebClientId?: string } | undefined)
+    ?.googleWebClientId || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+
+let googleConfigured = false;
+function configureGoogle() {
+  if (googleConfigured) return;
+  GoogleSignin.configure({
+    // The *web* client ID — Google issues an ID token whose audience is this,
+    // which the backend verifies. The Android OAuth client (registered with the
+    // app's SHA-1) just needs to exist in the same Google Cloud project.
+    webClientId: GOOGLE_WEB_CLIENT_ID,
+  });
+  googleConfigured = true;
+}
+
+/**
+ * Native Google sign-in: shows the system Google account chooser (no browser),
+ * then exchanges the resulting ID token for a mobile session via the backend
+ * `/api/auth/mobile-oauth/google` endpoint (members-only).
+ *
+ * Returns the session, or `null` if the user cancelled the chooser. Throws an
+ * Error with a friendly message on a real failure.
+ */
+export async function googleNativeLogin(): Promise<AuthSession | null> {
+  if (!GOOGLE_WEB_CLIENT_ID || GOOGLE_WEB_CLIENT_ID.startsWith("REPLACE_WITH")) {
+    throw new Error("Google sign-in isn't configured yet. Please try another method.");
+  }
+  configureGoogle();
+
+  let idToken: string | null = null;
+  try {
+    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+    const result = await GoogleSignin.signIn();
+    // v13+ returns { type, data }; older shapes expose fields directly.
+    const r = result as unknown as {
+      type?: string;
+      data?: { idToken?: string | null };
+      idToken?: string | null;
+    };
+    if (r.type === "cancelled") return null;
+    idToken = r.data?.idToken ?? r.idToken ?? null;
+  } catch (e) {
+    if (isErrorWithCode(e)) {
+      if (e.code === statusCodes.SIGN_IN_CANCELLED) return null;
+      if (e.code === statusCodes.IN_PROGRESS) return null;
+      if (e.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        throw new Error("Google Play Services is required for Google sign-in.");
+      }
+    }
+    throw new Error("Couldn't sign in with Google. Please try again.");
+  }
+
+  if (!idToken) {
+    throw new Error("Google didn't return a token. Please try again.");
+  }
+
+  let res: { token: string; expiresAt: string; user: MobileSessionUser };
+  try {
+    res = await request<{ token: string; expiresAt: string; user: MobileSessionUser }>(
+      "/api/auth/mobile-oauth/google",
+      { method: "POST", body: JSON.stringify({ idToken }) },
+    );
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 403)) {
+      const msg = e.message === "inactive"
+        ? "Your account isn't active. Please contact the association."
+        : "This account isn't registered yet. Please sign up or contact the association.";
+      throw new Error(msg);
+    }
+    throw new Error(e instanceof Error ? e.message : "Couldn't sign in with Google.");
+  }
+
+  await setToken(res.token);
+  return { token: res.token, expiresAt: res.expiresAt, user: normalizeUser(res.user) };
+}
+
+/**
+ * Social login via the web app's NextAuth providers, bridged into the app.
+ *
+ * We open the backend `/mobile-oauth` start page inside a secure in-app browser
+ * (expo-web-browser). That page runs the normal provider sign-in (so the
+ * members-only `signIn` callback, account-linking and profile backfill apply),
+ * then `/mobile-oauth/complete` mints a 30-day mobile token and redirects back
+ * to our `ctkalumni://oauth` deep link with `?token=…&expiresAt=…` (or
+ * `?error=…`). No new OAuth redirect URIs and no client secrets on device.
+ *
+ * Returns the session on success, or `null` if the user cancelled/dismissed the
+ * browser. Throws an Error with a friendly message on a real failure.
+ */
+export async function oauthLogin(provider: OAuthProvider): Promise<AuthSession | null> {
+  const redirectUrl = Linking.createURL("oauth");
+  const startUrl =
+    `${API_BASE}/mobile-oauth?provider=${encodeURIComponent(provider)}` +
+    `&callback=${encodeURIComponent(redirectUrl)}`;
+
+  const result = await WebBrowser.openAuthSessionAsync(startUrl, redirectUrl);
+  if (result.type !== "success" || !result.url) {
+    // User closed the browser (cancel/dismiss) — not an error.
+    return null;
+  }
+
+  const { queryParams } = Linking.parse(result.url);
+  const error = typeof queryParams?.error === "string" ? queryParams.error : null;
+  if (error) {
+    const map: Record<string, string> = {
+      notmember: "This account isn't registered yet. Please sign up or contact the association.",
+      failed: "Sign-in didn't complete. Please try again.",
+    };
+    throw new Error(map[error] || "Couldn't sign in. Please try again.");
+  }
+
+  const token = typeof queryParams?.token === "string" ? queryParams.token : null;
+  const expiresAt = typeof queryParams?.expiresAt === "string" ? queryParams.expiresAt : null;
+  if (!token || !expiresAt) {
+    throw new Error("Sign-in didn't complete. Please try again.");
+  }
+
+  await setToken(token);
+  const me = await mobileMe();
+  if (!me.ok) {
+    await setToken(null);
+    throw new Error("Couldn't load your profile. Please try again.");
+  }
+  return { token, expiresAt, user: me.user };
 }
 
 // ── Passwordless OTP login ───────────────────────────────────────────────────
