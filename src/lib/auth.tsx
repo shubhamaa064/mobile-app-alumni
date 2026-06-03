@@ -68,15 +68,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!token) return;
 
         const me = await mobileMe();
-        if (!me) {
-          // 401 / invalid token — drop the stale session.
-          await setToken(null);
-          await clearStoredUser();
-          setUser(null);
+        if (!me.ok) {
+          if (me.reason === "unauthorized") {
+            // Genuine 401/403 — token revoked or expired. Drop the session.
+            await setToken(null);
+            await clearStoredUser();
+            setUser(null);
+          }
+          // Network/server hiccup — keep the cached user signed in; we'll
+          // re-validate on the next launch or refresh. "Once the OTP is given
+          // for login it should not logout."
           return;
         }
-        setUser(me);
-        await persistUser(me);
+        setUser(me.user);
+        await persistUser(me.user);
 
         const expRaw = await SecureStore.getItemAsync(EXP_KEY).catch(() => null);
         if (expRaw && new Date(expRaw).getTime() - Date.now() < SEVEN_DAYS_MS) {
@@ -101,9 +106,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     const me = await mobileMe();
-    if (me) {
-      setUser(me);
-      await persistUser(me);
+    if (me.ok) {
+      setUser(me.user);
+      await persistUser(me.user);
     }
   }, []);
 

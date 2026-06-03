@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -6,19 +6,95 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/lib/auth";
 import { goBack } from "@/lib/nav";
+import { otpRequest, otpVerify } from "@/lib/api";
 import { colors, fonts, gradients, radius, spacing, shadow } from "@/theme";
 import { Txt } from "@/components/Text";
 import { Logo } from "@/components/Logo";
 
+type Mode = "otp" | "password";
+type Step = "enter" | "verify";
+
+const RESEND_SECONDS = 30;
+
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
-  const { signIn } = useAuth();
+  const { signIn, applySession } = useAuth();
+
+  const [mode, setMode] = useState<Mode>("otp");
+  const [step, setStep] = useState<Step>("enter");
+
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const submit = async () => {
+  // OTP delivery context shown on the verify screen.
+  const [channel, setChannel] = useState<"sms" | "email">("sms");
+  const [maskedTarget, setMaskedTarget] = useState("");
+  const [resendIn, setResendIn] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+
+  const startResendTimer = () => {
+    setResendIn(RESEND_SECONDS);
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setResendIn((s) => {
+        if (s <= 1) { if (timerRef.current) clearInterval(timerRef.current); return 0; }
+        return s - 1;
+      });
+    }, 1000);
+  };
+
+  // ── Step 1: request a code ─────────────────────────────────────────────────
+  const requestCode = async (isResend = false) => {
+    const id = identifier.trim();
+    if (!id) {
+      Alert.alert("Almost there", "Enter your registered mobile number or email.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await otpRequest(id);
+      setChannel(res.channel);
+      setMaskedTarget(res.maskedTarget);
+      setStep("verify");
+      setCode("");
+      startResendTimer();
+      if (!res.delivered && !isResend) {
+        // Delivery gateway not configured — code still exists (master/testing).
+        // Don't reveal anything; just keep the verify screen open.
+      }
+    } catch (e) {
+      Alert.alert("Couldn't send code", e instanceof Error ? e.message : "Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Step 2: verify the code ────────────────────────────────────────────────
+  const verifyCode = async () => {
+    const clean = code.replace(/\D/g, "");
+    if (clean.length < 4) {
+      Alert.alert("Enter the code", "Type the code we sent you.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const session = await otpVerify(identifier.trim(), clean);
+      await applySession(session);
+      goBack();
+    } catch (e) {
+      Alert.alert("Verification failed", e instanceof Error ? e.message : "Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Password fallback ──────────────────────────────────────────────────────
+  const submitPassword = async () => {
     if (!identifier || !password) {
       Alert.alert("Almost there", "Please enter your email and password.");
       return;
@@ -34,11 +110,17 @@ export default function LoginScreen() {
     }
   };
 
+  const isVerify = mode === "otp" && step === "verify";
+
   return (
     <LinearGradient colors={gradients.hero} style={styles.container}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
-        <Pressable onPress={goBack} style={[styles.close, { top: insets.top + 8 }]} hitSlop={10}>
-          <Ionicons name="close" size={24} color={colors.white} />
+        <Pressable
+          onPress={() => (isVerify ? (setStep("enter"), setCode("")) : goBack())}
+          style={[styles.close, { top: insets.top + 8 }]}
+          hitSlop={10}
+        >
+          <Ionicons name={isVerify ? "arrow-back" : "close"} size={24} color={colors.white} />
         </Pressable>
 
         <View style={styles.content}>
@@ -46,46 +128,117 @@ export default function LoginScreen() {
             <Logo height={96} plate />
             <Txt style={styles.hand}>welcome home</Txt>
             <Txt variant="title" color={colors.white} center style={{ marginTop: 2 }}>
-              Sign in to CTK Alumni
+              {isVerify ? "Enter your code" : "Sign in to CTK Alumni"}
             </Txt>
             <Txt variant="caption" color="rgba(255,255,255,0.65)" center style={{ marginTop: 4 }}>
-              Reconnect with the family you grew up with
+              {isVerify
+                ? `We sent a code to ${maskedTarget}`
+                : "Reconnect with the family you grew up with"}
             </Txt>
           </View>
 
           <View style={styles.form}>
-            <Field
-              icon="person-outline"
-              placeholder="Email address"
-              value={identifier}
-              onChangeText={setIdentifier}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-            <Field
-              icon="lock-closed-outline"
-              placeholder="Password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!show}
-              right={
-                <Pressable onPress={() => setShow((s) => !s)} hitSlop={8}>
-                  <Ionicons name={show ? "eye-off-outline" : "eye-outline"} size={20} color={colors.muted} />
+            {/* ── OTP: enter identifier ── */}
+            {mode === "otp" && step === "enter" && (
+              <>
+                <Field
+                  icon="person-outline"
+                  placeholder="Mobile number or email"
+                  value={identifier}
+                  onChangeText={setIdentifier}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  returnKeyType="send"
+                  onSubmitEditing={() => requestCode()}
+                />
+                <Pressable style={styles.submit} onPress={() => requestCode()} disabled={loading}>
+                  {loading ? (
+                    <ActivityIndicator color={colors.navyDeep} />
+                  ) : (
+                    <Txt style={styles.submitTxt}>Send code</Txt>
+                  )}
                 </Pressable>
-              }
-            />
+                <Pressable onPress={() => setMode("password")} style={styles.linkRow} hitSlop={8}>
+                  <Ionicons name="lock-closed-outline" size={14} color="rgba(255,255,255,0.7)" />
+                  <Txt style={styles.linkTxt}>  Sign in with password instead</Txt>
+                </Pressable>
+              </>
+            )}
 
-            <Pressable onPress={() => router.push("/forgot-password")} style={{ alignSelf: "flex-end", marginBottom: spacing.sm }} hitSlop={8}>
-              <Txt style={{ fontFamily: fonts.bodySemi, color: "rgba(255,255,255,0.7)", fontSize: 12.5 }}>Forgot password?</Txt>
-            </Pressable>
+            {/* ── OTP: verify code ── */}
+            {isVerify && (
+              <>
+                <Field
+                  icon="keypad-outline"
+                  placeholder="6-digit code"
+                  value={code}
+                  onChangeText={(t) => setCode(t.replace(/\D/g, "").slice(0, 8))}
+                  keyboardType="number-pad"
+                  autoFocus
+                  maxLength={8}
+                  style={{ letterSpacing: 6 }}
+                  returnKeyType="done"
+                  onSubmitEditing={verifyCode}
+                />
+                <Pressable style={styles.submit} onPress={verifyCode} disabled={loading}>
+                  {loading ? (
+                    <ActivityIndicator color={colors.navyDeep} />
+                  ) : (
+                    <Txt style={styles.submitTxt}>Verify & sign in</Txt>
+                  )}
+                </Pressable>
+                <Pressable
+                  onPress={() => resendIn === 0 && requestCode(true)}
+                  disabled={resendIn > 0 || loading}
+                  style={styles.linkRow}
+                  hitSlop={8}
+                >
+                  <Txt style={[styles.linkTxt, resendIn > 0 && { opacity: 0.5 }]}>
+                    {resendIn > 0 ? `Resend code in ${resendIn}s` : "Didn't get it? Resend code"}
+                  </Txt>
+                </Pressable>
+              </>
+            )}
 
-            <Pressable style={styles.submit} onPress={submit} disabled={loading}>
-              {loading ? (
-                <ActivityIndicator color={colors.navyDeep} />
-              ) : (
-                <Txt style={{ fontFamily: fonts.bodyBold, color: colors.navyDeep, fontSize: 16 }}>Sign In</Txt>
-              )}
-            </Pressable>
+            {/* ── Password fallback ── */}
+            {mode === "password" && (
+              <>
+                <Field
+                  icon="person-outline"
+                  placeholder="Email address"
+                  value={identifier}
+                  onChangeText={setIdentifier}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+                <Field
+                  icon="lock-closed-outline"
+                  placeholder="Password"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!show}
+                  right={
+                    <Pressable onPress={() => setShow((s) => !s)} hitSlop={8}>
+                      <Ionicons name={show ? "eye-off-outline" : "eye-outline"} size={20} color={colors.muted} />
+                    </Pressable>
+                  }
+                />
+                <Pressable onPress={() => router.push("/forgot-password")} style={{ alignSelf: "flex-end", marginBottom: spacing.sm }} hitSlop={8}>
+                  <Txt style={{ fontFamily: fonts.bodySemi, color: "rgba(255,255,255,0.7)", fontSize: 12.5 }}>Forgot password?</Txt>
+                </Pressable>
+                <Pressable style={styles.submit} onPress={submitPassword} disabled={loading}>
+                  {loading ? (
+                    <ActivityIndicator color={colors.navyDeep} />
+                  ) : (
+                    <Txt style={styles.submitTxt}>Sign In</Txt>
+                  )}
+                </Pressable>
+                <Pressable onPress={() => setMode("otp")} style={styles.linkRow} hitSlop={8}>
+                  <Ionicons name="chatbox-ellipses-outline" size={14} color="rgba(255,255,255,0.7)" />
+                  <Txt style={styles.linkTxt}>  Sign in with a one-time code</Txt>
+                </Pressable>
+              </>
+            )}
           </View>
 
           <View style={styles.footer}>
@@ -105,6 +258,7 @@ export default function LoginScreen() {
 export function Field({
   icon,
   right,
+  style,
   ...props
 }: {
   icon: keyof typeof Ionicons.glyphMap;
@@ -116,7 +270,7 @@ export function Field({
       <TextInput
         {...props}
         placeholderTextColor={colors.muted}
-        style={fieldStyles.input}
+        style={[fieldStyles.input, style]}
       />
       {right}
     </View>
@@ -142,5 +296,8 @@ const styles = StyleSheet.create({
   hand: { fontFamily: fonts.handBold, fontSize: 20, color: colors.goldSoft, marginTop: 10 },
   form: { marginTop: spacing.xxl },
   submit: { backgroundColor: colors.goldSoft, paddingVertical: 16, borderRadius: radius.md, alignItems: "center", marginTop: spacing.sm, ...shadow.lift },
+  submitTxt: { fontFamily: fonts.bodyBold, color: colors.navyDeep, fontSize: 16 },
+  linkRow: { flexDirection: "row", justifyContent: "center", alignItems: "center", marginTop: spacing.lg },
+  linkTxt: { fontFamily: fonts.bodySemi, color: "rgba(255,255,255,0.8)", fontSize: 13 },
   footer: { flexDirection: "row", justifyContent: "center", alignItems: "center", marginTop: spacing.xl },
 });

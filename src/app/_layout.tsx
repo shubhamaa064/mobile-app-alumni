@@ -17,6 +17,7 @@ import { Caveat_600SemiBold, Caveat_700Bold } from "@expo-google-fonts/caveat";
 
 import { queryClient } from "@/lib/query";
 import { AuthProvider } from "@/lib/auth";
+import { AppLockProvider } from "@/lib/app-lock";
 import { NotificationProvider } from "@/lib/inbox";
 import { colors } from "@/theme";
 
@@ -47,16 +48,19 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
-            <NotificationProvider>
-              <StatusBar style="light" />
-              <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.paper } }}>
-                <Stack.Screen name="(tabs)" />
-                <Stack.Screen name="inbox" />
-                <Stack.Screen name="login" options={{ presentation: "modal" }} />
-                <Stack.Screen name="register" options={{ presentation: "modal" }} />
-                <Stack.Screen name="notify-primer" options={{ presentation: "modal" }} />
-              </Stack>
-            </NotificationProvider>
+            <AppLockProvider>
+              <NotificationProvider>
+                <StatusBar style="light" />
+                <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.paper } }}>
+                  <Stack.Screen name="(tabs)" />
+                  <Stack.Screen name="inbox" />
+                  <Stack.Screen name="login" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="register" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="notify-primer" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="onboarding" options={{ presentation: "modal", gestureEnabled: false }} />
+                </Stack>
+              </NotificationProvider>
+            </AppLockProvider>
           </AuthProvider>
         </QueryClientProvider>
       </SafeAreaProvider>

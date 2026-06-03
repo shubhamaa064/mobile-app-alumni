@@ -1,10 +1,12 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { View, ScrollView, StyleSheet, Pressable, RefreshControl, useWindowDimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
+import { ONBOARDED_KEY } from "@/app/onboarding";
 
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -32,6 +34,19 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const { user } = useAuth();
+
+  // First-launch onboarding — show the carousel once, then never again.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const seen = await SecureStore.getItemAsync(ONBOARDED_KEY).catch(() => null);
+      if (!cancelled && seen !== "1") {
+        // Defer so the tab navigator is mounted before we present the modal.
+        setTimeout(() => router.push("/onboarding" as Href), 350);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const info = useQuery({ queryKey: ["siteInfo"], queryFn: api.siteInfo });
   const content = useQuery({ queryKey: ["siteContent"], queryFn: api.siteContent });

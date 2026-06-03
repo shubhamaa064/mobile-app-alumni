@@ -1,5 +1,5 @@
 import React from "react";
-import { View, ScrollView, StyleSheet, Pressable, Alert } from "react-native";
+import { View, ScrollView, StyleSheet, Pressable, Alert, Switch } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { api, parsePrivacy, type Completeness, type MyProfile } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useAppLock } from "@/lib/app-lock";
 import { colors, fonts, gradients, radius, spacing, shadow } from "@/theme";
 import { Txt } from "@/components/Text";
 import { Avatar } from "@/components/Avatar";
@@ -93,6 +94,9 @@ export default function MyProfileScreen() {
             <ActionRow icon="notifications-outline" label="Notifications" sub="Reminders & alerts" onPress={() => router.push("/notify-settings")} divider />
             <ActionRow icon="log-out-outline" label="Sign Out" sub="" danger onPress={onSignOut} />
           </View>
+
+          {/* ── Security (biometric app lock) ── */}
+          <SecurityCard />
 
           {/* ── About ── */}
           <SectionCard title="ABOUT">
@@ -252,6 +256,50 @@ function ActionRow({ icon, label, sub, onPress, danger, divider }: {
   );
 }
 
+function SecurityCard() {
+  const { available, label, enabled, setEnabled, kind } = useAppLock();
+  const [busy, setBusy] = React.useState(false);
+
+  const onToggle = async (next: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const ok = await setEnabled(next);
+      if (next && !ok) {
+        Alert.alert(`Couldn't enable ${label}`, "We couldn't verify your biometrics. Please try again.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View style={[styles.card, shadow.soft]}>
+      <Txt variant="label" color={colors.goldDeep} style={{ marginBottom: spacing.sm }}>SECURITY</Txt>
+      <View style={styles.lockRow}>
+        <View style={styles.actionIcon}>
+          <Ionicons name={kind === "face" ? "scan-outline" : "finger-print-outline"} size={18} color={colors.navy} />
+        </View>
+        <View style={{ flex: 1, marginLeft: spacing.md }}>
+          <Txt variant="bodyMedium" color={colors.ink}>{available ? `${label} lock` : "Biometric lock"}</Txt>
+          <Txt variant="caption">
+            {available
+              ? `Require ${label} each time you open the app`
+              : "Set up Face ID or a fingerprint on your device to enable"}
+          </Txt>
+        </View>
+        <Switch
+          value={enabled}
+          onValueChange={onToggle}
+          disabled={!available || busy}
+          trackColor={{ true: colors.gold, false: colors.line }}
+          thumbColor={colors.white}
+        />
+      </View>
+    </View>
+  );
+}
+
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View style={[styles.card, shadow.soft]}>
@@ -325,6 +373,7 @@ const styles = StyleSheet.create({
   progressTrack: { height: 8, borderRadius: 4, backgroundColor: colors.paperDim, marginTop: spacing.md, overflow: "hidden" },
   progressFill: { height: 8, borderRadius: 4, backgroundColor: colors.gold },
   actionRow: { flexDirection: "row", alignItems: "center", paddingVertical: spacing.md, paddingHorizontal: spacing.sm },
+  lockRow: { flexDirection: "row", alignItems: "center", paddingVertical: spacing.xs },
   actionIcon: { width: 38, height: 38, borderRadius: radius.md, backgroundColor: "rgba(20,33,61,0.07)", alignItems: "center", justifyContent: "center" },
   divider: { borderBottomWidth: 1, borderBottomColor: colors.line },
   infoRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: spacing.sm, gap: spacing.md },

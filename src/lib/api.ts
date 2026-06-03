@@ -57,6 +57,22 @@ function resolveUrl(path: string): string {
   return `${API_BASE}${path}`;
 }
 
+/**
+ * Error carrying the HTTP status so callers can distinguish a real auth failure
+ * (401 → drop the session) from a transient network/server problem (status 0 or
+ * 5xx → keep the cached session, the user stays logged in).
+ */
+export class ApiError extends Error {
+  status: number;
+  fieldErrors?: Record<string, string>;
+  constructor(message: string, status: number, fieldErrors?: Record<string, string>) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.fieldErrors = fieldErrors;
+  }
+}
+
 export type ListResponse<T> = { data: T[]; total: number; page: number; limit: number };
 
 export type SiteInfo = { name: string | null; tagline: string | null; logoUrl: string | null };
@@ -545,14 +561,21 @@ async function request<T>(
     const t = await loadToken();
     if (t) headers.set("Authorization", `Bearer ${t}`);
   }
-  const res = await fetch(resolveUrl(path), { ...init, headers });
+  let res: Response;
+  try {
+    res = await fetch(resolveUrl(path), { ...init, headers });
+  } catch (e) {
+    // Network failure (offline, DNS, timeout) — surface as status 0 so callers
+    // can keep the session instead of treating it as an auth failure.
+    throw new ApiError((e as Error)?.message || "Network request failed", 0);
+  }
   const text = await res.text();
   const body = text ? (() => { try { return JSON.parse(text); } catch { return null; } })() : null;
   if (!res.ok) {
     if (res.status === 401) await setToken(null);
     const err = body as { error?: string; fieldErrors?: Record<string, string> } | null;
     const firstField = err?.fieldErrors ? Object.values(err.fieldErrors)[0] : undefined;
-    throw new Error(firstField || err?.error || `Request failed (${res.status})`);
+    throw new ApiError(firstField || err?.error || `Request failed (${res.status})`, res.status, err?.fieldErrors);
   }
   return body as T;
 }
@@ -946,14 +969,62 @@ export async function register(data: {
   return { token: s.token, expiresAt: s.expiresAt, user: normalizeUser(s.user) };
 }
 
+/**
+ * Result of validating the stored token. `ok` carries the user; otherwise
+ * `reason` says whether it was a genuine auth failure (drop session) or a
+ * transient network/server hiccup (keep the cached session).
+ */
+export type MeResult =
+  | { ok: true; user: AuthUser }
+  | { ok: false; reason: "unauthorized" | "network" };
+
 /** GET /api/auth/mobile-me — validate the stored token on launch. */
-export async function mobileMe(): Promise<AuthUser | null> {
+export async function mobileMe(): Promise<MeResult> {
   try {
     const r = await request<{ user: MobileSessionUser }>("/api/auth/mobile-me", { auth: true });
-    return normalizeUser(r.user);
-  } catch {
-    return null;
+    return { ok: true, user: normalizeUser(r.user) };
+  } catch (e) {
+    // Only a real 401/403 means the token is invalid. Network errors (status 0)
+    // and server errors (5xx) must NOT log the user out.
+    const status = e instanceof ApiError ? e.status : 0;
+    const reason = status === 401 || status === 403 ? "unauthorized" : "network";
+    return { ok: false, reason };
   }
+}
+
+// ── Passwordless OTP login ───────────────────────────────────────────────────
+
+export type OtpRequestResult = {
+  ok: boolean;
+  channel: "sms" | "email";
+  maskedTarget: string;
+  expiresAt: string;
+  delivered: boolean;
+  masterAvailable: boolean;
+};
+
+/**
+ * POST /api/auth/otp/request — send a login code to a registered mobile number
+ * or email. Members-only: throws ApiError(404) if the identifier isn't known.
+ */
+export async function otpRequest(identifier: string): Promise<OtpRequestResult> {
+  return request<OtpRequestResult>("/api/auth/otp/request", {
+    method: "POST",
+    body: JSON.stringify({ identifier, purpose: "login" }),
+  });
+}
+
+/**
+ * POST /api/auth/otp/verify — exchange a valid code for a 30-day session.
+ * Persists the token (same shape as email/password login).
+ */
+export async function otpVerify(identifier: string, code: string): Promise<AuthSession> {
+  const s = await request<RawSession>("/api/auth/otp/verify", {
+    method: "POST",
+    body: JSON.stringify({ identifier, code, device: device() }),
+  });
+  await setToken(s.token);
+  return { token: s.token, expiresAt: s.expiresAt, user: normalizeUser(s.user) };
 }
 
 /** POST /api/auth/mobile-refresh — swap a valid token for a fresh 30-day one. */
