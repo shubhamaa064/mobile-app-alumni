@@ -7,10 +7,17 @@
     "icon": "./assets/images/icon.png",
     "scheme": "ctkalumni",
     "userInterfaceStyle": "light",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/a1f3a5b9-1ea8-49ab-9e26-126c61db976d",
+      "fallbackToCacheTimeout": 0
+    },
     "android": {
       "package": "org.ctkalumni.app",
       "adaptiveIcon": {
-        "backgroundColor": "#14213D",
+        "backgroundColor": "#FBF6EC",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
@@ -38,7 +45,7 @@
         {
           "backgroundColor": "#14213D",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 120
+          "imageWidth": 200
         }
       ],
       [
@@ -49,7 +56,17 @@
           "defaultChannel": "general"
         }
       ],
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ],
+      "expo-updates"
     ],
     "notification": {
       "icon": "./assets/images/notification-icon.png",
